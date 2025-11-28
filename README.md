@@ -1,28 +1,79 @@
-# Experimental Results & Evaluation
+<div align="center">
 
-This section evaluates the proposed CNN-LSTM-Attention Hybrid Architecture using data processed by the **[DLLFlowLyzer](https://github.com/ahlashkari/DLLFlowlyzer)** framework. We benchmarked the model against traditional machine learning classifiers and single-architecture deep learning models to validate the effectiveness of our time-based modeling technique.
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white)
+![Imbalanced-Learn](https://img.shields.io/badge/imbalanced--learn-compatible-orange?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)
 
-## 1. Evaluation Methodology
-To account for class imbalance, we report weighted averages across all 11 attack classes. The weighted metric is calculated as:
+</div>
 
-$$\text{Metric}_{\text{weighted}} = \frac{\sum_{k=1}^{11} n_k \cdot \text{Metric}_k}{\sum_{k=1}^{11} n_k}$$
+---
 
-Where $n_k$ represents the support for class $k$.
+# Model Architecture
 
-## 2. Training Progression
-The model demonstrates rapid convergence. As shown below, the F1-score rises dramatically within the first 6 epochs (learning major patterns) and refines steady until epoch 26 (learning edge cases via attention).
+The proposed model employs a **CNN-LSTM-Attention Hybrid Architecture** designed specifically for real-time Data Link Layer intrusion detection. It addresses the challenge of identifying advanced Layer 2 attacks by modeling both spatial features (individual flow characteristics) and temporal dependencies (patterns across time).
 
-| Epoch | Training F1 (%) | Validation F1 (%) | Learning Rate |
-| :--- | :--- | :--- | :--- |
-| 1 | 13.54 | 12.87 | $1.0 \times 10^{-3}$ |
-| 6 | 86.25 | 84.92 | $9.5 \times 10^{-4}$ |
-| 11 | 99.19 | 98.76 | $8.7 \times 10^{-4}$ |
-| 16 | 99.45 | 99.12 | $7.2 \times 10^{-4}$ |
-| 26 | 99.61 | 99.41 | $4.1 \times 10^{-4}$ |
-| 40 | **99.67** | **99.40** | $8.3 \times 10^{-5}$ |
+### High-Level Design
+The architecture combines three deep learning paradigms:
+1.  **CNN (Convolutional Neural Networks):** For spatial feature extraction from individual flows.
+2.  **LSTM (Long Short-Term Memory):** For capturing temporal dependencies across a sequence of flows.
+3.  **Attention Mechanism:** For adaptive feature importance weighting, allowing the model to focus on specific time steps in the window.
 
-## 3. Overall Performance
-The model achieves exceptional performance on the held-out test set, significantly outperforming standard benchmarks (typically 80-90%).
+![Model Architecture Diagram](Images/OveralModel.png)
+*Figure 1: The overall structure of the CNN-LSTM-Attention Hybrid model.*
+
+### Detailed Layer Structure
+The model processes a sliding window of network flows. The input passes through stacked Conv1D layers, followed by an LSTM network, and finally an Attention layer that aggregates the context before splitting into a dual-head output (Binary and Multi-class).
+
+![Detailed Layer Diagram](Images/LFModelDLL.pdf)
+*Figure 2: Detailed architecture showing layer dimensions and flow.*
+
+---
+
+# Training & Loss Function
+
+To effectively train the model on imbalanced network traffic data, we utilize a **Multi-Task Loss Function**. This approach combines binary classification (Normal vs. Attack) with multi-class classification (Specific Attack Type) to ensure the model learns both general anomalies and specific attack signatures.
+
+### Optimization Strategy
+* **Optimizer:** AdamW with decoupled weight decay.
+* **Scheduler:** Cosine Annealing with warm restarts.
+* **Loss weighting:** We balance the two tasks using a hyperparameter $\alpha$ (set to 0.3).
+
+### Loss Calculation
+The total loss $\mathcal{L}_{\text{total}}$ is calculated as:
+
+$$
+\mathcal{L}_{\text{total}} = \alpha \mathcal{L}_{\text{binary}} + (1-\alpha) \mathcal{L}_{\text{multi}}
+$$
+
+#### 1. Binary Loss
+Standard Cross-Entropy is used for the binary head to distinguish between Benign and Malicious traffic:
+
+$$
+\mathcal{L}_{\text{binary}} = -\frac{1}{N}\sum_{i=1}^{N}\left[y_i^{\text{bin}} \log(\hat{y}_i^{\text{bin}}) + (1-y_i^{\text{bin}})\log(1-\hat{y}_i^{\text{bin}})\right]
+$$
+
+#### 2. Multi-Class Loss (Weighted)
+To handle the class imbalance inherent in intrusion detection datasets, we use Weighted Cross-Entropy for the multi-class head. The weights ensure minority attack classes contribute proportionally to the gradient:
+
+$$
+\mathcal{L}_{\text{multi}} = -\frac{1}{N}\sum_{i=1}^{N} w_{c_i} \sum_{k=1}^{11} y_{ik} \log(\hat{y}_{ik})
+$$
+
+Where the class weight $w_k$ is computed using a balanced strategy:
+
+$$
+w_k = \frac{N}{11 \cdot N_k}
+$$
+
+---
+
+# Experimental Results
+
+This section evaluates the model using data processed by the **[DLLFlowLyzer](https://github.com/ahlashkari/DLLFlowlyzer)** framework. We benchmarked the model against traditional machine learning classifiers and single-architecture deep learning models.
+
+### Overall Performance
+The model achieves exceptional performance on the held-out test set, significantly outperforming standard benchmarks.
 
 | Metric | Weighted Average (%) | Standard Deviation (%) |
 | :--- | :--- | :--- |
@@ -49,7 +100,29 @@ The model remains robust across all attack types, with no class falling below 99
 | **STP_Attack** | 99.77 | 99.88 | 99.82 |
 | **Weighted Avg** | **99.73** | **99.65** | **99.67** |
 
-*Note: Attacks with distinct temporal patterns (STP, ARP Poisoning) achieved the highest scores, while those mimicking legitimate traffic (VLAN, DHCP Spoofing) were slightly lower but still exceptional.*
+### Baseline Comparison
+Our proposed Hybrid approach demonstrates substantial superiority over both traditional Machine Learning and single-architecture Deep Learning methods.
+
+| Method | Precision (%) | Recall (%) | F1-Score (%) |
+| :--- | :--- | :--- | :--- |
+| Random Forest | 87.34 | 85.92 | 86.62 |
+| XGBoost | 89.67 | 88.45 | 89.05 |
+| SVM (RBF kernel) | 83.21 | 81.76 | 82.47 |
+| MLP (3 layers) | 91.45 | 90.12 | 90.78 |
+| CNN only | 93.67 | 92.34 | 93.00 |
+| LSTM only | 93.12 | 93.56 | 93.84 |
+| **Proposed** | **99.73** | **99.65** | **99.67** |
+
+### Ablation Study
+Ablation testing confirms that **Temporal Windowing** and the **LSTM Layer** are the most critical contributors to performance.
+
+| Configuration | F1-Score (%) | $\Delta$ F1 (%) |
+| :--- | :--- | :--- |
+| **Full Model (Proposed)** | **99.67** | **0.00** |
+| Without LSTM Layer | 94.23 | -5.44 |
+| Without Attention Mechanism | 97.12 | -2.55 |
+| Without Dual Heads | 98.89 | -0.78 |
+| Without Temporal Windows | 91.56 | -8.11 |
 
 ## 4. Explainability Analysis
 We utilized SHAP (global importance) and LIME (local approximations) to interpret model decisions.
@@ -71,38 +144,5 @@ The analysis confirms the model relies on protocol-specific features rather than
 | **STP_Attack** | `stp_msg_age`, `stp_topology_change`, `stp_bridge_priority`, `stp_root_cost`, `stp_forward_delay` |
 
 ### LIME Summary
-![Global feature importance based on LIME](Shapes/Model/lime_comprehensive_analysis_with_names.png)
+![Global feature importance based on LIME](Images/lime_comprehensive_analysis_with_names.png)
 *Figure: LIME analysis showing the balance between protocol-specific categories (ARP, DHCP, STP) and statistical properties (Rates, Diversity).*
-
-## 5. Ablation Study
-To validate the architectural components, we performed ablation testing. The results highlight that **Temporal Windowing** and the **LSTM Layer** are the most critical contributors to performance.
-
-| Configuration | F1-Score (%) | $\Delta$ F1 (%) |
-| :--- | :--- | :--- |
-| **Full Model (Proposed)** | **99.67** | **0.00** |
-| Without LSTM Layer | 94.23 | -5.44 |
-| Without Attention Mechanism | 97.12 | -2.55 |
-| Without Dual Heads | 98.89 | -0.78 |
-| Without Second CNN Layer | 97.45 | -2.22 |
-| Without Batch Normalization | 96.34 | -3.33 |
-| Without Dropout | 97.78 | -1.89 |
-| **Without Temporal Windows** | **91.56** | **-8.11** |
-| Window Size = 15 | 97.83 | -1.84 |
-| Window Size = 45 | 99.12 | -0.55 |
-| Without SMOTETomek | 93.47 | -6.20 |
-| Without Class Weighting | 96.71 | -2.96 |
-
-## 6. Baseline Comparison
-Our proposed Late Fusion/Hybrid approach demonstrates substantial superiority over both traditional Machine Learning and single-architecture Deep Learning methods.
-
-| Method | Precision (%) | Recall (%) | F1-Score (%) |
-| :--- | :--- | :--- | :--- |
-| Random Forest | 87.34 | 85.92 | 86.62 |
-| XGBoost | 89.67 | 88.45 | 89.05 |
-| SVM (RBF kernel) | 83.21 | 81.76 | 82.47 |
-| MLP (3 layers) | 91.45 | 90.12 | 90.78 |
-| CNN only | 93.67 | 92.34 | 93.00 |
-| LSTM only | 93.12 | 93.56 | 93.84 |
-| **Proposed** | **99.73** | **99.65** | **99.67** |
-
-The results confirm that while Deep Learning generally outperforms traditional ML for this task, the combination of **CNN (Spatial)**, **LSTM (Temporal)**, and **Attention (Adaptive weighting)** provides the necessary depth to detect advanced Layer 2 attacks with near-perfect accuracy.
