@@ -25,7 +25,7 @@ The architecture combines three deep learning paradigms:
 ### Detailed Layer Structure
 The model processes a sliding window of network flows. The input passes through stacked Conv1D layers, followed by an LSTM network, and finally an Attention layer that aggregates the context before splitting into a dual-head output (Binary and Multi-class).
 
-![Detailed Layer Diagram](Images/LFModelDLL.pdf)
+![Detailed Layer Diagram](Images/LFModelDLL.png)
 *Figure 2: Detailed architecture showing layer dimensions and flow.*
 
 ---
